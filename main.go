@@ -10,6 +10,11 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/google/uuid"
 )
 
 type Hooked_events_arr struct {
@@ -52,6 +57,14 @@ type Message struct {
 	Text string `json:"text"`
 }
 
+type RoomSetting struct {
+	RoomId    string `dynamodbav:"roomId"`
+	UserName1 string `dynamodbav:"userName1"`
+	UserName2 string `dynamodbav:"userName2"`
+	UserId1   string `dynamodbav:"userId1"`
+	UserId2   string `dynamodbav:"userId2"`
+}
+
 func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var hevents Hooked_events_arr
 	err := json.Unmarshal([]byte(req.Body), &hevents)
@@ -77,6 +90,34 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			reqStruct.Messages = []Message{{Type: "text", Text: "支払いをしてください"}}
 		} else if e.Message.Text == "支払い完了" {
 			reqStruct.Messages = []Message{{Type: "text", Text: "えらいね"}}
+		} else if e.Message.Text == "uuid" {
+			uuidObj, _ := uuid.NewUUID()
+			reqStruct.Messages = []Message{{Type: "text", Text: uuidObj.String()}}
+		} else if e.Message.Text == "デバッグ" {
+			sess, err := session.NewSession()
+			if err != nil {
+				log.Fatal(err)
+			}
+			db := dynamodb.New(sess)
+			getParam := &dynamodb.GetItemInput{
+				TableName: aws.String("lineServiceSeisanRoomSetting"),
+				Key: map[string]*dynamodb.AttributeValue{
+					"roomId": {
+						S: aws.String(e.Source.UserId),
+					},
+				},
+			}
+			log.Print(e.Source.UserId)
+			dbRes, err := db.GetItem(getParam)
+			if err != nil {
+				log.Fatal(err)
+			}
+			item := RoomSetting{}
+			err = dynamodbattribute.UnmarshalMap(dbRes.Item, &item)
+			if err != nil {
+				log.Fatal(err)
+			}
+			reqStruct.Messages = []Message{{Type: "text", Text: "ユーザー名" + item.UserName1 + item.UserName2}}
 		} else {
 			reqStruct.Messages = []Message{{Type: "text", Text: "クエリの意味が理解できません"}}
 		}
