@@ -59,10 +59,24 @@ type Resp struct {
 }
 
 type Message struct {
-	Type      string `json:"type"`
-	Text      string `json:"text"`
-	PackageId string `json:"packageId"`
-	StickerId string `json:"stickerId"`
+	Type      string   `json:"type"`
+	Text      string   `json:"text"`
+	PackageId string   `json:"packageId"`
+	StickerId string   `json:"stickerId"`
+	AltText   string   `json:"altText"`
+	Template  Template `json:"template"`
+}
+
+type Template struct {
+	Type    string   `json:"type"`
+	Text    string   `json:"text"`
+	Actions []Action `json:"actions"`
+}
+
+type Action struct {
+	Type  string `json:"type"`
+	Label string `json:"label"`
+	Text  string `json:"text"`
 }
 
 type RoomSetting struct {
@@ -72,6 +86,11 @@ type RoomSetting struct {
 	UserId1    string `dynamodbav:"userId1"`
 	UserId2    string `dynamodbav:"userId2"`
 	SeisanDone bool   `dynamodbav:"seisanDone"`
+	QueryCnt   int64  `dynamodbav:"queryCnt"`
+}
+
+type QueryHistories struct {
+	Item []QueryHistory
 }
 
 type QueryHistory struct {
@@ -84,8 +103,15 @@ type QueryHistory struct {
 	MessageId string `dynamodbav:"messageId"`
 }
 
-type QueryHistories struct {
-	Item []QueryHistory
+type RegisteredQueries struct {
+	Item []RegisteredQuery
+}
+
+type RegisteredQuery struct {
+	RoomId   string `dynamodbav:"roomId"`
+	Name     string `dynamodbav:"name"`
+	DebtorId string `dynamodbav:"debtorId"`
+	Amount   int64  `dynamodbav:"amount"`
 }
 
 // reply registered messages
@@ -94,6 +120,7 @@ func replyMessage(reqStruct *Resp) error {
 	if err != nil {
 		return err
 	}
+	log.Print(string(reqJson))
 	req, err := http.NewRequest(
 		"POST",
 		"https://api.line.me/v2/bot/message/reply",
@@ -137,6 +164,31 @@ func getRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) 
 	return nil
 }
 
+func getRegisteredQuery(db *dynamodb.DynamoDB, ID string, name string, registeredItem *RegisteredQuery) error {
+	//get registeredQuery
+	getParam := &dynamodb.GetItemInput{
+		TableName: aws.String("lineServiceSeisanRegisteredQuery"),
+		Key: map[string]*dynamodb.AttributeValue{
+			"roomId": {
+				S: aws.String(ID),
+			},
+			"name": {
+				S: aws.String(name),
+			},
+		},
+	}
+	log.Print(ID)
+	dbRes, err := db.GetItem(getParam)
+	if err != nil {
+		return err
+	}
+	err = dynamodbattribute.UnmarshalMap(dbRes.Item, &registeredItem)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // get query history
 func getQueryHistory(db *dynamodb.DynamoDB, ID string, historyItem *QueryHistories) error {
 	getParamQuery := &dynamodb.QueryInput{
@@ -166,6 +218,39 @@ func getQueryHistory(db *dynamodb.DynamoDB, ID string, historyItem *QueryHistori
 		p := QueryHistory{}
 		err = dynamodbattribute.UnmarshalMap(v, &p)
 		historyItem.Item = append(historyItem.Item, p)
+	}
+	if err != nil {
+		return err
+	}
+	return err
+}
+
+// get registered all query
+func getAllRegisteredQuery(db *dynamodb.DynamoDB, ID string, registeredItem *RegisteredQueries) error {
+	getParamQuery := &dynamodb.QueryInput{
+		TableName:              aws.String("lineServiceSeisanRegisteredQuery"),
+		KeyConditionExpression: aws.String("#roomId = :roomId"),
+		ExpressionAttributeNames: map[string]*string{
+			"#roomId":   aws.String("roomId"),
+			"#name":     aws.String("name"),
+			"#debtorId": aws.String("debtorId"),
+			"#amount":   aws.String("amount"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":roomId": {
+				S: aws.String(ID),
+			},
+		},
+		ProjectionExpression: aws.String("#roomId, #name, #debtorId, #amount"),
+	}
+	dbResQuery, err := db.Query(getParamQuery)
+	if err != nil {
+		return err
+	}
+	for _, v := range dbResQuery.Items {
+		p := RegisteredQuery{}
+		err = dynamodbattribute.UnmarshalMap(v, &p)
+		registeredItem.Item = append(registeredItem.Item, p)
 	}
 	if err != nil {
 		return err
@@ -221,6 +306,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			log.Fatal("invalid e.Source.Type")
 		}
 		if e.Type == "unsend" && e.Mode == "active" {
+			updateDone(db, ID, false)
 			//get query history
 			historyItem := QueryHistories{}
 			err = getQueryHistory(db, ID, &historyItem)
@@ -248,9 +334,9 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					if err != nil {
 						log.Fatal(err)
 					}
-					continue
 				}
 			}
+			continue
 		}
 		//init request struct
 		reqStruct := new(Resp)
@@ -272,6 +358,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				UserId1:    uuidObj1.String(),
 				UserId2:    uuidObj2.String(),
 				SeisanDone: false,
+				QueryCnt:   0,
 			})
 			if err != nil {
 				log.Fatal(err)
@@ -300,7 +387,6 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			updateDone(db, ID, false)
 			continue
 		}
 		if e.Type != "message" || e.Mode != "active" {
@@ -309,7 +395,206 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 		log.Print(e)
 		qs := strings.Fields(e.Message.Text)
 		//t = parse(e.Message.Text)
-		if e.Message.Text == "init" {
+		if len(qs) == 4 && qs[0] == "クエリ登録" {
+			//get room setting
+			settingItem := RoomSetting{}
+			err := getRoomSetting(db, ID, &settingItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			//validate user id
+			var debtorId string
+			if settingItem.UserName1 == qs[2] {
+				debtorId = settingItem.UserId1
+			} else if settingItem.UserName2 == qs[2] {
+				debtorId = settingItem.UserId2
+			} else {
+				errMessage := fmt.Sprintf("ユーザー名が正しくありません\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
+				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+				//reply registered messages
+				err := replyMessage(reqStruct)
+				if err != nil {
+					log.Fatal(err)
+				}
+				continue
+			}
+			//validate query cnt
+			if settingItem.QueryCnt > 5 {
+				errMessage := "クエリ登録の上限です\n"
+				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+				//reply registered messages
+				err = replyMessage(reqStruct)
+				if err != nil {
+					log.Fatal(err)
+				}
+				continue
+			}
+			inputUpdate := &dynamodb.UpdateItemInput{
+				TableName: aws.String("lineServiceSeisanRoomSetting"),
+				Key: map[string]*dynamodb.AttributeValue{
+					"roomId": {
+						S: aws.String(ID),
+					},
+				},
+				ExpressionAttributeNames: map[string]*string{
+					"#target": aws.String("QueryCnt"),
+				},
+				ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+					":newState": {
+						N: aws.String(strconv.FormatInt(settingItem.QueryCnt+1, 10)),
+					},
+				},
+				UpdateExpression: aws.String("set #target = :newState"),
+			}
+			_, err = db.UpdateItem(inputUpdate)
+			if err != nil {
+				log.Fatal(err)
+			}
+			//register query
+			amount, err := strconv.ParseInt(qs[3], 10, 64)
+			if err != nil {
+				log.Fatal(err)
+			}
+			inputAV, err := dynamodbattribute.MarshalMap(RegisteredQuery{
+				RoomId:   ID,
+				Name:     qs[1],
+				DebtorId: debtorId,
+				Amount:   amount,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+			inputPut := &dynamodb.PutItemInput{
+				TableName: aws.String("lineServiceSeisanRegisteredQuery"),
+				Item:      inputAV,
+			}
+			_, err = db.PutItem(inputPut)
+			if err != nil {
+				log.Fatal(err)
+			}
+			//reply registered messages
+			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+			err = replyMessage(reqStruct)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else if len(qs) == 2 && qs[0] == "クエリ" {
+			//get room setting
+			settingItem := RoomSetting{}
+			err := getRoomSetting(db, ID, &settingItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			//validate querycnt
+			if settingItem.QueryCnt == 0 {
+				errMessage := "登録されたクエリが0件です\n"
+				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+				//reply registered messages
+				err = replyMessage(reqStruct)
+				if err != nil {
+					log.Fatal(err)
+				}
+				continue
+			}
+			registeredItem := RegisteredQuery{}
+			err = getRegisteredQuery(db, ID, qs[1], &registeredItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if registeredItem.DebtorId == "" {
+				reply := fmt.Sprintln("クエリが正しくありません")
+				registeredItems := RegisteredQueries{}
+				err = getAllRegisteredQuery(db, ID, &registeredItems)
+				if err != nil {
+					log.Fatal(err)
+				}
+				reply += fmt.Sprintf("登録されたクエリは次の%d件です\n", settingItem.QueryCnt)
+				for _, v := range registeredItems.Item {
+					var debtorName string
+					if v.DebtorId == settingItem.UserId1 {
+						debtorName = settingItem.UserName1
+					} else if v.DebtorId == settingItem.UserId2 {
+						debtorName = settingItem.UserName2
+					} else {
+						reply += "内部エラー"
+						break
+					}
+					reply += fmt.Sprintf("%s %s %d\n", v.Name, debtorName, v.Amount)
+				}
+				reqStruct.Messages = []Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
+				err = replyMessage(reqStruct)
+				if err != nil {
+					log.Fatal(err)
+				}
+				continue
+			}
+			//register registeredItem
+			t := time.Now()
+			m := fmt.Sprintf("%d", t.Month())
+			d := fmt.Sprintf("%d", t.Day())
+			if len(m) == 1 {
+				m = "  " + m
+			}
+			if len(d) == 1 {
+				d = "  " + d
+			}
+			date := fmt.Sprintf("%s/%s", m, d)
+			inputAV, err := dynamodbattribute.MarshalMap(QueryHistory{
+				RoomId:    ID,
+				Timestamp: e.Timestamp,
+				DebtorId:  registeredItem.DebtorId,
+				Amount:    registeredItem.Amount,
+				Comment:   qs[1],
+				Date:      date,
+				MessageId: e.Message.Id,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+			input := &dynamodb.PutItemInput{
+				TableName: aws.String("lineServiceSeisanQueryHistory"),
+				Item:      inputAV,
+			}
+			_, err = db.PutItem(input)
+			if err != nil {
+				log.Fatal(err)
+			}
+			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+			err = replyMessage(reqStruct)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else if e.Message.Text == "クエリ確認" {
+			//get room setting
+			settingItem := RoomSetting{}
+			err := getRoomSetting(db, ID, &settingItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			registeredItem := RegisteredQueries{}
+			err = getAllRegisteredQuery(db, ID, &registeredItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			reply := fmt.Sprintf("登録されたクエリは次の%d件です\n", settingItem.QueryCnt)
+			for _, v := range registeredItem.Item {
+				var debtorName string
+				if v.DebtorId == settingItem.UserId1 {
+					debtorName = settingItem.UserName1
+				} else if v.DebtorId == settingItem.UserId2 {
+					debtorName = settingItem.UserName2
+				} else {
+					reply += "内部エラー"
+					break
+				}
+				reply += fmt.Sprintf("%s %s %d\n", v.Name, debtorName, v.Amount)
+			}
+			reqStruct.Messages = []Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
+			err = replyMessage(reqStruct)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else if e.Message.Text == "init" {
 			uuidObj1, err := uuid.NewUUID()
 			if err != nil {
 				log.Fatal(err)
@@ -324,6 +609,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				UserName2: "Bob",
 				UserId1:   uuidObj1.String(),
 				UserId2:   uuidObj2.String(),
+				QueryCnt:  0,
 			})
 			if err != nil {
 				log.Fatal(err)
@@ -370,7 +656,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			} else if qs[1] == settingItem.UserName2 {
 				toBeReplaced = "userName2"
 			} else {
-				errMessage := fmt.Sprintf("ユーザー名が重複しています\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
+				errMessage := fmt.Sprintf("ユーザー名が正しくありません\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
 				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
 				//reply registered messages
 				err := replyMessage(reqStruct)
@@ -513,24 +799,58 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				historiesText += fmt.Sprintf("%s %s %s %s\n", item.Date, userName, amount, item.Comment)
 				//historiesText += fmt.Sprintf("%20s\n", item.Comment)
 			}
-			reqStruct.Messages = append(
-				reqStruct.Messages,
-				Message{Type: "text", Text: strings.TrimRight(historiesText, "\n")},
-			)
+			if user1Debt != 0 {
+				reqStruct.Messages = append(
+					reqStruct.Messages,
+					Message{Type: "text", Text: strings.TrimRight(historiesText, "\n")},
+				)
+			}
 			//register total debt
 			if user1Debt > 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
 					Message{Type: "text", Text: strings.TrimSpace(settingItem.UserName1) + " " + strconv.FormatInt(user1Debt, 10)},
 				)
-				reqStruct.Messages = append(reqStruct.Messages, Message{Type: "text", Text: "支払いをしてください"})
+				reqStruct.Messages = append(reqStruct.Messages,
+					Message{
+						Type:    "template",
+						AltText: "支払いをしてください",
+						Template: Template{
+							Type: "buttons",
+							Text: "支払いをしてください",
+							Actions: []Action{
+								{
+									Type:  "message",
+									Label: "支払い完了",
+									Text:  "支払い完了",
+								},
+							},
+						},
+					},
+				)
 				updateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
 					Message{Type: "text", Text: strings.TrimSpace(settingItem.UserName2) + " " + strconv.FormatInt(user1Debt*-1, 10)},
 				)
-				reqStruct.Messages = append(reqStruct.Messages, Message{Type: "text", Text: "支払いをしてください"})
+				reqStruct.Messages = append(reqStruct.Messages,
+					Message{
+						Type:    "template",
+						AltText: "支払いをしてください",
+						Template: Template{
+							Type: "buttons",
+							Text: "支払いをしてください",
+							Actions: []Action{
+								{
+									Type:  "message",
+									Label: "支払い完了",
+									Text:  "支払い完了",
+								},
+							},
+						},
+					},
+				)
 				updateDone(db, ID, true)
 			} else {
 				reqStruct.Messages = append(
@@ -596,6 +916,24 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			textUserName := fmt.Sprintf("ユーザー名\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
 			reqStruct.Messages = []Message{{Type: "text", Text: textUserName}}
+		} else if e.Message.Text == "デバッグ" {
+			reqStruct.Messages = []Message{
+				{
+					Type:    "template",
+					AltText: "支払いをしてください",
+					Template: Template{
+						Type: "buttons",
+						Text: "支払いをしてください",
+						Actions: []Action{
+							{
+								Type:  "message",
+								Label: "支払い完了",
+								Text:  "支払い完了",
+							},
+						},
+					},
+				},
+			}
 		} else {
 			helpText := "クエリを正しく処理できませんでした\n"
 			helpText += fmt.Sprint(qs) + "\n"
