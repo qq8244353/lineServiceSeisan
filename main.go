@@ -559,7 +559,36 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+			//culculate debt for notify users current state
+			historyItem := QueryHistories{}
+			err = getQueryHistory(db, ID, &historyItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			user1Debt := int64(0)
+			for _, item := range historyItem.Item {
+				//culculate debt sum
+				if item.DebtorId == settingItem.UserId1 {
+					user1Debt += item.Amount
+				} else if item.DebtorId == settingItem.UserId2 {
+					user1Debt -= item.Amount
+				} else {
+					log.Print("in touroku in cul debt sum")
+					log.Print(settingItem.UserId1)
+					log.Print(settingItem.UserId2)
+					log.Fatal(item.DebtorId)
+				}
+				//historiesText += fmt.Sprintf("%20s\n", item.Comment)
+			}
+			replyMessageStr := ""
+			if user1Debt > 0 {
+				replyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName1), user1Debt)
+			} else if user1Debt < 0 {
+				replyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName2), user1Debt*-1)
+			} else {
+				replyMessageStr += fmt.Sprintf("登録完了\n素晴らしいことに借金はありません!")
+			}
+			reqStruct.Messages = []Message{{Type: "text", Text: replyMessageStr}}
 			err = replyMessage(reqStruct)
 			if err != nil {
 				log.Fatal(err)
@@ -744,7 +773,37 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+			// reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+			//culculate debt for notify users current state
+			historyItem := QueryHistories{}
+			err = getQueryHistory(db, ID, &historyItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			user1Debt := int64(0)
+			for _, item := range historyItem.Item {
+				//culculate debt sum
+				if item.DebtorId == settingItem.UserId1 {
+					user1Debt += item.Amount
+				} else if item.DebtorId == settingItem.UserId2 {
+					user1Debt -= item.Amount
+				} else {
+					log.Print("in touroku in cul debt sum")
+					log.Print(settingItem.UserId1)
+					log.Print(settingItem.UserId2)
+					log.Fatal(item.DebtorId)
+				}
+				//historiesText += fmt.Sprintf("%20s\n", item.Comment)
+			}
+			replyMessageStr := ""
+			if user1Debt > 0 {
+				replyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName1), user1Debt)
+			} else if user1Debt < 0 {
+				replyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName2), user1Debt*-1)
+			} else {
+				replyMessageStr += fmt.Sprintf("登録完了\n素晴らしいことに借金はありません!")
+			}
+			reqStruct.Messages = []Message{{Type: "text", Text: replyMessageStr}}
 		} else if e.Message.Text == "精算" {
 			//get room setting
 			settingItem := RoomSetting{}
@@ -811,22 +870,9 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					reqStruct.Messages,
 					Message{Type: "text", Text: strings.TrimSpace(settingItem.UserName1) + " " + strconv.FormatInt(user1Debt, 10)},
 				)
-				reqStruct.Messages = append(reqStruct.Messages,
-					Message{
-						Type:    "template",
-						AltText: "支払いをしてください",
-						Template: Template{
-							Type: "buttons",
-							Text: "支払いをしてください",
-							Actions: []Action{
-								{
-									Type:  "message",
-									Label: "支払い完了",
-									Text:  "支払い完了",
-								},
-							},
-						},
-					},
+				reqStruct.Messages = append(
+					reqStruct.Messages,
+					Message{Type: "text", Text: "支払いをしてください"},
 				)
 				updateDone(db, ID, true)
 			} else if user1Debt < 0 {
@@ -834,22 +880,27 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					reqStruct.Messages,
 					Message{Type: "text", Text: strings.TrimSpace(settingItem.UserName2) + " " + strconv.FormatInt(user1Debt*-1, 10)},
 				)
-				reqStruct.Messages = append(reqStruct.Messages,
-					Message{
-						Type:    "template",
-						AltText: "支払いをしてください",
-						Template: Template{
-							Type: "buttons",
-							Text: "支払いをしてください",
-							Actions: []Action{
-								{
-									Type:  "message",
-									Label: "支払い完了",
-									Text:  "支払い完了",
-								},
-							},
-						},
-					},
+				// unconveinent feature
+				// reqStruct.Messages = append(reqStruct.Messages,
+				// 	Message{
+				// 		Type:    "template",
+				// 		AltText: "支払いをしてください",
+				// 		Template: Template{
+				// 			Type: "buttons",
+				// 			Text: "支払いをしてください",
+				// 			Actions: []Action{
+				// 				{
+				// 					Type:  "message",
+				// 					Label: "支払い完了",
+				// 					Text:  "支払い完了",
+				// 				},
+				// 			},
+				// 		},
+				// 	},
+				// )
+				reqStruct.Messages = append(
+					reqStruct.Messages,
+					Message{Type: "text", Text: "支払いをしてください"},
 				)
 				updateDone(db, ID, true)
 			} else {
@@ -935,17 +986,18 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				},
 			}
 		} else {
-			helpText := "クエリを正しく処理できませんでした\n"
-			helpText += fmt.Sprint(qs) + "\n"
-			helpText += "使用できるクエリは次の6つです\n"
-			helpText += "\"init\"\n"
-			helpText += "\"名前確認\"\n"
-			helpText += "\"名前変更\" (変更前の名前) (変更後の名前)\n"
-			helpText += "\"登録\" (借りる人の名前) (金額) (コメント)\n"
-			helpText += "\"精算\"\n"
-			helpText += "\"支払い完了\"\n"
-			helpText += "また、登録クエリを送信取り消しした場合はそのクエリが消去されます"
-			reqStruct.Messages = []Message{{Type: "text", Text: helpText}, {Type: "sticker", PackageId: "8515", StickerId: "16581259"}}
+			//ignore if message is unexpected format
+			// helpText := "クエリを正しく処理できませんでした\n"
+			// helpText += fmt.Sprint(qs) + "\n"
+			// helpText += "使用できるクエリは次の6つです\n"
+			// helpText += "\"init\"\n"
+			// helpText += "\"名前確認\"\n"
+			// helpText += "\"名前変更\" (変更前の名前) (変更後の名前)\n"
+			// helpText += "\"登録\" (借りる人の名前) (金額) (コメント)\n"
+			// helpText += "\"精算\"\n"
+			// helpText += "\"支払い完了\"\n"
+			// helpText += "また、登録クエリを送信取り消しした場合はそのクエリが消去されます"
+			// reqStruct.Messages = []Message{{Type: "text", Text: helpText}, {Type: "sticker", PackageId: "8515", StickerId: "16581259"}}
 		}
 
 		//reply registered messages
