@@ -87,6 +87,7 @@ type RoomSetting struct {
 	UserId2    string `dynamodbav:"userId2"`
 	SeisanDone bool   `dynamodbav:"seisanDone"`
 	QueryCnt   int64  `dynamodbav:"queryCnt"`
+	PaymentDue int64  `dynamodbav:"paymentDue"`
 }
 
 type QueryHistories struct {
@@ -868,39 +869,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if user1Debt > 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					Message{Type: "text", Text: strings.TrimSpace(settingItem.UserName1) + " " + strconv.FormatInt(user1Debt, 10)},
-				)
-				reqStruct.Messages = append(
-					reqStruct.Messages,
-					Message{Type: "text", Text: "支払いをしてください"},
+					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
 				)
 				updateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					Message{Type: "text", Text: strings.TrimSpace(settingItem.UserName2) + " " + strconv.FormatInt(user1Debt*-1, 10)},
-				)
-				// unconveinent feature
-				// reqStruct.Messages = append(reqStruct.Messages,
-				// 	Message{
-				// 		Type:    "template",
-				// 		AltText: "支払いをしてください",
-				// 		Template: Template{
-				// 			Type: "buttons",
-				// 			Text: "支払いをしてください",
-				// 			Actions: []Action{
-				// 				{
-				// 					Type:  "message",
-				// 					Label: "支払い完了",
-				// 					Text:  "支払い完了",
-				// 				},
-				// 			},
-				// 		},
-				// 	},
-				// )
-				reqStruct.Messages = append(
-					reqStruct.Messages,
-					Message{Type: "text", Text: "支払いをしてください"},
+					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
 				)
 				updateDone(db, ID, true)
 			} else {
@@ -985,6 +960,61 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					},
 				},
 			}
+		} else if len(qs) == 2 && qs[0] == "支払日登録" {
+			settingItem := RoomSetting{}
+			err := getRoomSetting(db, ID, &settingItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			date, err := strconv.ParseInt(qs[1], 10, 64)
+			if err != nil {
+				log.Fatal(err)
+			}
+			if date < 1 || 31 < date {
+				reqStruct.Messages = []Message{{Type: "text", Text: "支払日には1から31の整数を指定してください"}}
+				//reply registered messages
+				err := replyMessage(reqStruct)
+				if err != nil {
+					log.Fatal(err)
+				}
+				continue
+			}
+			input := &dynamodb.UpdateItemInput{
+				TableName: aws.String("lineServiceSeisanRoomSetting"),
+				Key: map[string]*dynamodb.AttributeValue{
+					"roomId": {
+						S: aws.String(ID),
+					},
+				},
+				ExpressionAttributeNames: map[string]*string{
+					"#target": aws.String("paymentDue"),
+				},
+				ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+					":newDate": {
+						N: aws.String(strconv.FormatInt(date, 10)),
+					},
+				},
+				UpdateExpression: aws.String("set #target = :newDate"),
+			}
+			_, err = db.UpdateItem(input)
+			if err != nil {
+				log.Fatal(err)
+			}
+			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+		} else if e.Message.Text == "支払日確認" {
+			//get room setting
+			settingItem := RoomSetting{}
+			err := getRoomSetting(db, ID, &settingItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			var replytext string
+			if settingItem.PaymentDue < 1 || 31 < settingItem.PaymentDue {
+				replytext = "支払日の設定はありません"
+			} else {
+				replytext = fmt.Sprintf("支払日は%d日です", settingItem.PaymentDue)
+			}
+			reqStruct.Messages = []Message{{Type: "text", Text: replytext}}
 		} else {
 			//ignore if message is unexpected format
 			// helpText := "クエリを正しく処理できませんでした\n"
