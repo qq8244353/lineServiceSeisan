@@ -7,7 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/qq8244353/lineServiceSeisan/dbtask"
+	dbtask "github.com/qq8244353/lineServiceSeisan/pkg/dbtask"
 )
 
 func GetSetting() {
@@ -22,7 +22,22 @@ func UpdateClearanceDate() {
 }
 func RegisterTemplate() {
 }
-func RegisterQueryHistory() {
+
+type Resp struct {
+	ReplyToken string    `json:"replyToken"`
+	Messages   []Message `json:"messages"`
+}
+
+type Message struct {
+	Type      string   `json:"type"`
+	Text      string   `json:"text"`
+	PackageId string   `json:"packageId"`
+	StickerId string   `json:"stickerId"`
+	AltText   string   `json:"altText"`
+	Template  Template `json:"template"`
+}
+
+func RegisterQueryHistory(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct Resp) error {
 	//get room setting
 	settingItem := dbtask.RoomSetting{}
 	err := dbtask.GetRoomSetting(db, ID, &settingItem)
