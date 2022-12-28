@@ -23,6 +23,8 @@ import (
 	"github.com/qq8244353/lineServiceSeisan/pkg/task"
 )
 
+// "github.com/qq8244353/lineServiceSeisan/pkg/task"
+
 type Hooked_events_arr struct {
 	Events []Hooked_events
 }
@@ -259,7 +261,7 @@ func getAllRegisteredQuery(db *dynamodb.DynamoDB, ID string, registeredItem *Reg
 	return err
 }
 
-//	func task.updateDone(db *dynamodb.DynamoDB, roomId string, b bool) {
+//	func updateDone(db *dynamodb.DynamoDB, roomId string, b bool) {
 //		input := &dynamodb.UpdateItemInput{
 //			TableName: aws.String("lineServiceSeisanRoomSetting"),
 //			Key: map[string]*dynamodb.AttributeValue{
@@ -307,7 +309,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			log.Fatal("invalid e.Source.Type")
 		}
 		if e.Type == "unsend" && e.Mode == "active" {
-			task.updateDone(db, ID, false)
+			updateDone(db, ID, false)
 			//get query history
 			historyItem := QueryHistories{}
 			err = getQueryHistory(db, ID, &historyItem)
@@ -718,7 +720,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 		} else if len(qs) == 4 && qs[0] == "登録" {
-			task.updateDone(db, ID, false)
+			updateDone(db, ID, false)
 			//get room setting
 			settingItem := RoomSetting{}
 			err := getRoomSetting(db, ID, &settingItem)
@@ -871,13 +873,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
 				)
-				task.updateDone(db, ID, true)
+				updateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
 				)
-				task.updateDone(db, ID, true)
+				updateDone(db, ID, true)
 			} else {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
@@ -932,7 +934,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			reqStruct.Messages = []Message{{Type: "sticker", PackageId: "8515", StickerId: "16581254"}, {Type: "text", Text: "えらいね"}}
-			task.updateDone(db, ID, false)
+			updateDone(db, ID, false)
 		} else if e.Message.Text == "名前確認" {
 			//get room setting
 			settingItem := RoomSetting{}
