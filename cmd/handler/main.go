@@ -1,13 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"net/http/httputil"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,12 +16,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/google/uuid"
 	dbtask "github.com/qq8244353/lineServiceSeisan/pkg/dbtask"
-	qtask "github.com/qq8244353/lineServiceSeisan/pkg/qtask"
 	msgtask "github.com/qq8244353/lineServiceSeisan/pkg/msgtask"
 )
 
 func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var hevents Hook_events
+	var hevents msgtask.Hook_events
 	err := json.Unmarshal([]byte(req.Body), &hevents)
 	if err != nil {
 		log.Fatal(err)
@@ -67,7 +62,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			continue
 		}
 		//init request struct
-		reqStruct := new(Resp)
+		reqStruct := new(msgtask.Response)
 		reqStruct.ReplyToken = e.ReplyToken
 		//init dbtask.RoomSetting table when invited to room
 		if e.Type == "join" && e.Mode == "active" {
@@ -102,7 +97,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			helpText += "\"精算\"\n"
 			helpText += "\"支払い完了\"\n"
 			helpText += "また、登録クエリを送信取り消しした場合はそのクエリが消去されます"
-			reqStruct.Messages = []Message{{Type: "text", Text: helpText}, {Type: "sticker", PackageId: "8515", StickerId: "16581248"}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: helpText}, {Type: "sticker", PackageId: "8515", StickerId: "16581248"}}
 			//reply registered messages
 			err = msgtask.ReplyMessage(reqStruct)
 			if err != nil {
@@ -128,7 +123,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			//validate querycnt
 			if settingItem.QueryCnt == 0 {
 				errMessage := "登録されたクエリが0件です\n"
-				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: errMessage}}
 				//reply registered messages
 				err = msgtask.ReplyMessage(reqStruct)
 				if err != nil {
@@ -161,7 +156,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					}
 					reply += fmt.Sprintf("%s %s %d\n", v.Name, debtorName, v.Amount)
 				}
-				reqStruct.Messages = []Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
 				err = msgtask.ReplyMessage(reqStruct)
 				if err != nil {
 					log.Fatal(err)
@@ -212,15 +207,15 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				}
 				//historiesText += fmt.Sprintf("%20s\n", item.Comment)
 			}
-			msgtask.ReplyMessageStr := ""
+			ReplyMessageStr := ""
 			if user1Debt > 0 {
-				msgtask.ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName1), user1Debt)
+				ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName1), user1Debt)
 			} else if user1Debt < 0 {
-				msgtask.ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName2), user1Debt*-1)
+				ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName2), user1Debt*-1)
 			} else {
-				msgtask.ReplyMessageStr += fmt.Sprintf("登録完了\n素晴らしいことに借金はありません!")
+				ReplyMessageStr += fmt.Sprintf("登録完了\n素晴らしいことに借金はありません!")
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: msgtask.ReplyMessageStr}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: ReplyMessageStr}}
 			err = msgtask.ReplyMessage(reqStruct)
 			if err != nil {
 				log.Fatal(err)
@@ -250,7 +245,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				}
 				reply += fmt.Sprintf("%s %s %d\n", v.Name, debtorName, v.Amount)
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
 			err = msgtask.ReplyMessage(reqStruct)
 			if err != nil {
 				log.Fatal(err)
@@ -265,7 +260,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			log.Print(qs)
 			log.Printf("%d %d %d", len(qs[0]), len(qs[1]), len(qs[2]))
 			if len(qs[2]) > 15 {
-				reqStruct.Messages = []Message{{Type: "text", Text: "ユーザー名は5文字以下にしてください"}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "ユーザー名は5文字以下にしてください"}}
 				//reply registered messages
 				err := msgtask.ReplyMessage(reqStruct)
 				if err != nil {
@@ -275,7 +270,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			if (qs[1] == settingItem.UserName1 && qs[2] == settingItem.UserName2) || (qs[1] == settingItem.UserName2 && qs[2] == settingItem.UserName1) {
 				errMessage := fmt.Sprintf("ユーザーが重複しています\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
-				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: errMessage}}
 				//reply registered messages
 				err := msgtask.ReplyMessage(reqStruct)
 				if err != nil {
@@ -290,7 +285,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				toBeReplaced = "userName2"
 			} else {
 				errMessage := fmt.Sprintf("ユーザー名が正しくありません\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
-				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: errMessage}}
 				//reply registered messages
 				err := msgtask.ReplyMessage(reqStruct)
 				if err != nil {
@@ -319,7 +314,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "success"}}
 		} else if len(qs) == 4 && qs[0] == "登録" {
 			dbtask.UpdateDone(db, ID, false)
 			//get room setting
@@ -335,7 +330,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				debtorId = settingItem.UserId2
 			} else {
 				errMessage := fmt.Sprintf("ユーザー名が正しくありません\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
-				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: errMessage}}
 				//reply registered messages
 				err := msgtask.ReplyMessage(reqStruct)
 				if err != nil {
@@ -391,15 +386,15 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				}
 				//historiesText += fmt.Sprintf("%20s\n", item.Comment)
 			}
-			msgtask.ReplyMessageStr := ""
+			ReplyMessageStr := ""
 			if user1Debt > 0 {
-				msgtask.ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName1), user1Debt)
+				ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName1), user1Debt)
 			} else if user1Debt < 0 {
-				msgtask.ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName2), user1Debt*-1)
+				ReplyMessageStr += fmt.Sprintf("登録完了\n%sさんが%d円借りています", strings.TrimSpace(settingItem.UserName2), user1Debt*-1)
 			} else {
-				msgtask.ReplyMessageStr += fmt.Sprintf("登録完了\n素晴らしいことに借金はありません!")
+				ReplyMessageStr += fmt.Sprintf("登録完了\n素晴らしいことに借金はありません!")
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: msgtask.ReplyMessageStr}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: ReplyMessageStr}}
 		} else if e.Message.Text == "精算" {
 			//get room setting
 			settingItem := dbtask.RoomSetting{}
@@ -414,7 +409,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 
-			reqStruct.Messages = []Message{}
+			reqStruct.Messages = []msgtask.Message{}
 			user1Debt := int64(0)
 			var historiesText string
 			for len(settingItem.UserName1) < len(settingItem.UserName2) {
@@ -455,26 +450,26 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if user1Debt != 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					Message{Type: "text", Text: strings.TrimRight(historiesText, "\n")},
+					msgtask.Message{Type: "text", Text: strings.TrimRight(historiesText, "\n")},
 				)
 			}
 			//register total debt
 			if user1Debt > 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
+					msgtask.Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
 				)
 				dbtask.UpdateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
+					msgtask.Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
 				)
 				dbtask.UpdateDone(db, ID, true)
 			} else {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					Message{Type: "text", Text: "支払いはありません"},
+					msgtask.Message{Type: "text", Text: "支払いはありません"},
 				)
 			}
 		} else if e.Message.Text == "支払い完了" {
@@ -485,7 +480,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			if !settingItem.SeisanDone {
-				reqStruct.Messages = []Message{{Type: "text", Text: "先に精算クエリを完了してください"}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "先に精算クエリを完了してください"}}
 				//reply registered messages
 				err := msgtask.ReplyMessage(reqStruct)
 				if err != nil {
@@ -524,7 +519,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			reqStruct.Messages = []Message{{Type: "sticker", PackageId: "8515", StickerId: "16581254"}, {Type: "text", Text: "えらいね"}}
+			reqStruct.Messages = []msgtask.Message{{Type: "sticker", PackageId: "8515", StickerId: "16581254"}, {Type: "text", Text: "えらいね"}}
 			dbtask.UpdateDone(db, ID, false)
 		} else if e.Message.Text == "名前確認" {
 			//get room setting
@@ -534,16 +529,16 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			textUserName := fmt.Sprintf("ユーザー名\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
-			reqStruct.Messages = []Message{{Type: "text", Text: textUserName}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: textUserName}}
 		} else if e.Message.Text == "デバッグ" {
-			reqStruct.Messages = []Message{
+			reqStruct.Messages = []msgtask.Message{
 				{
 					Type:    "template",
 					AltText: "支払いをしてください",
-					Template: MessageTemplate{
+					Template: msgtask.MessageTemplate{
 						Type: "buttons",
 						Text: "支払いをしてください",
-						Actions: []TemplateAction{
+						Actions: []msgtask.TemplateAction{
 							{
 								Type:  "message",
 								Label: "支払い完了",
@@ -564,7 +559,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			if date < 1 || 31 < date {
-				reqStruct.Messages = []Message{{Type: "text", Text: "支払日には1から31の整数を指定してください"}}
+				reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "支払日には1から31の整数を指定してください"}}
 				//reply registered messages
 				err := msgtask.ReplyMessage(reqStruct)
 				if err != nil {
@@ -593,7 +588,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "success"}}
 		} else if e.Message.Text == "支払日確認" {
 			//get room setting
 			settingItem := dbtask.RoomSetting{}
@@ -607,7 +602,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			} else {
 				replytext = fmt.Sprintf("支払日は%d日です", settingItem.PaymentDue)
 			}
-			reqStruct.Messages = []Message{{Type: "text", Text: replytext}}
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: replytext}}
 		}
 
 		//reply registered messages

@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	dbtask "github.com/qq8244353/lineServiceSeisan/pkg/dbtask"
+	msgtask "github.com/qq8244353/lineServiceSeisan/pkg/msgtask"
 )
 
 func GetSetting() {
@@ -23,21 +24,7 @@ func UpdateClearanceDate() {
 func RegisterTemplate() {
 }
 
-type Resp struct {
-	ReplyToken string    `json:"replyToken"`
-	Messages   []Message `json:"messages"`
-}
-
-type Message struct {
-	Type      string   `json:"type"`
-	Text      string   `json:"text"`
-	PackageId string   `json:"packageId"`
-	StickerId string   `json:"stickerId"`
-	AltText   string   `json:"altText"`
-	Template  Template `json:"template"`
-}
-
-func RegisterQueryHistory(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct Resp) error {
+func RegisterQueryHistory(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct *msgtask.Response) {
 	//get room setting
 	settingItem := dbtask.RoomSetting{}
 	err := dbtask.GetRoomSetting(db, ID, &settingItem)
@@ -52,24 +39,24 @@ func RegisterQueryHistory(db *dynamodb.DynamoDB, ID string, qs []string, reqStru
 		debtorId = settingItem.UserId2
 	} else {
 		errMessage := fmt.Sprintf("ユーザー名が正しくありません\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
-		reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+		reqStruct.Messages = []msgtask.Message{{Type: "text", Text: errMessage}}
 		//reply registered messages
-		err := replyMessage(reqStruct)
+		err := msgtask.ReplyMessage(reqStruct)
 		if err != nil {
 			log.Fatal(err)
 		}
-		continue
+		return
 	}
 	//validate query cnt
 	if settingItem.QueryCnt > 5 {
 		errMessage := "クエリ登録の上限です\n"
-		reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
+		reqStruct.Messages = []msgtask.Message{{Type: "text", Text: errMessage}}
 		//reply registered messages
-		err = replyMessage(reqStruct)
+		err = msgtask.ReplyMessage(reqStruct)
 		if err != nil {
 			log.Fatal(err)
 		}
-		continue
+		return
 	}
 	inputUpdate := &dynamodb.UpdateItemInput{
 		TableName: aws.String("lineServiceSeisanRoomSetting"),
@@ -108,8 +95,8 @@ func RegisterQueryHistory(db *dynamodb.DynamoDB, ID string, qs []string, reqStru
 		log.Fatal(err)
 	}
 	//reply registered messages
-	reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
-	err = replyMessage(reqStruct)
+	reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "success"}}
+	err = msgtask.ReplyMessage(reqStruct)
 	if err != nil {
 		log.Fatal(err)
 	}
