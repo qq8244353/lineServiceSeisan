@@ -20,7 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/google/uuid"
-	"github.com/qq8244353/lineServiceSeisan/pkg"
+	"github.com/qq8244353/lineServiceSeisan/pkg/task"
 )
 
 type Hooked_events_arr struct {
