@@ -1,6 +1,8 @@
 package task
 
 import (
+	"log"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -17,7 +19,7 @@ type RoomSetting struct {
 	PaymentDue int64  `dynamodbav:"paymentDue"`
 }
 
-func getRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) error {
+func GetRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) error {
 	//get roomSetting
 	getParam := &dynamodb.GetItemInput{
 		TableName: aws.String("lineServiceSeisanRoomSetting"),
@@ -38,7 +40,23 @@ func getRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) 
 	return nil
 }
 
-func updateDone(db *dynamodb.DynamoDB, roomId string, b bool) error {
+func PutRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) error {
+	inputAV, err := dynamodbattribute.MarshalMap(settingItem)
+	if err != nil {
+		log.Fatal(err)
+	}
+	input := &dynamodb.PutItemInput{
+		TableName: aws.String("lineServiceSeisanRoomSetting"),
+		Item:      inputAV,
+	}
+	_, err = db.PutItem(input)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func UpdateDone(db *dynamodb.DynamoDB, roomId string, b bool) error {
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String("lineServiceSeisanRoomSetting"),
 		Key: map[string]*dynamodb.AttributeValue{

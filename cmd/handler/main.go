@@ -18,18 +18,15 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/google/uuid"
-	"github.com/qq8244353/lineServiceSeisan/pkg/task"
+	task "github.com/qq8244353/lineServiceSeisan/pkg/task"
 )
 
-// "github.com/qq8244353/lineServiceSeisan/pkg/task"
-
-type Hooked_events_arr struct {
-	Events []Hooked_events
+type Hook_events struct {
+	Events []Hook_event
 }
 
-type Hooked_events struct {
+type Hook_event struct {
 	Type    string
 	Message struct {
 		Type string
@@ -82,42 +79,6 @@ type Action struct {
 	Text  string `json:"text"`
 }
 
-type RoomSetting struct {
-	RoomId     string `dynamodbav:"roomId"`
-	UserName1  string `dynamodbav:"userName1"`
-	UserName2  string `dynamodbav:"userName2"`
-	UserId1    string `dynamodbav:"userId1"`
-	UserId2    string `dynamodbav:"userId2"`
-	SeisanDone bool   `dynamodbav:"seisanDone"`
-	QueryCnt   int64  `dynamodbav:"queryCnt"`
-	PaymentDue int64  `dynamodbav:"paymentDue"`
-}
-
-type QueryHistories struct {
-	Item []QueryHistory
-}
-
-type QueryHistory struct {
-	RoomId    string `dynamodbav:"roomId"`
-	Timestamp int64  `dynamodbav:"timestamp"`
-	Comment   string `dynamodbav:"comment"`
-	Date      string `dynamodbav:"date"`
-	DebtorId  string `dynamodbav:"debtorId"`
-	Amount    int64  `dynamodbav:"amount"`
-	MessageId string `dynamodbav:"messageId"`
-}
-
-type RegisteredQueries struct {
-	Item []RegisteredQuery
-}
-
-type RegisteredQuery struct {
-	RoomId   string `dynamodbav:"roomId"`
-	Name     string `dynamodbav:"name"`
-	DebtorId string `dynamodbav:"debtorId"`
-	Amount   int64  `dynamodbav:"amount"`
-}
-
 // reply registered messages
 func replyMessage(reqStruct *Resp) error {
 	reqJson, err := json.Marshal(&reqStruct)
@@ -146,151 +107,12 @@ func replyMessage(reqStruct *Resp) error {
 	return nil
 }
 
-//	func getRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) error {
-//		//get roomSetting
-//		getParam := &dynamodb.GetItemInput{
-//			TableName: aws.String("lineServiceSeisanRoomSetting"),
-//			Key: map[string]*dynamodb.AttributeValue{
-//				"roomId": {
-//					S: aws.String(ID),
-//				},
-//			},
-//		}
-//		log.Print(ID)
-//		dbRes, err := db.GetItem(getParam)
-//		if err != nil {
-//			return err
-//		}
-//		err = dynamodbattribute.UnmarshalMap(dbRes.Item, &settingItem)
-//		if err != nil {
-//			return err
-//		}
-//		return nil
-//	}
-func getRegisteredQuery(db *dynamodb.DynamoDB, ID string, name string, registeredItem *RegisteredQuery) error {
-	//get registeredQuery
-	getParam := &dynamodb.GetItemInput{
-		TableName: aws.String("lineServiceSeisanRegisteredQuery"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"roomId": {
-				S: aws.String(ID),
-			},
-			"name": {
-				S: aws.String(name),
-			},
-		},
-	}
-	log.Print(ID)
-	dbRes, err := db.GetItem(getParam)
-	if err != nil {
-		return err
-	}
-	err = dynamodbattribute.UnmarshalMap(dbRes.Item, &registeredItem)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// get query history
-func getQueryHistory(db *dynamodb.DynamoDB, ID string, historyItem *QueryHistories) error {
-	getParamQuery := &dynamodb.QueryInput{
-		TableName:              aws.String("lineServiceSeisanQueryHistory"),
-		KeyConditionExpression: aws.String("#roomId = :roomId"),
-		ExpressionAttributeNames: map[string]*string{
-			"#roomId":    aws.String("roomId"),
-			"#timestamp": aws.String("timestamp"),
-			"#comment":   aws.String("comment"),
-			"#date":      aws.String("date"),
-			"#amount":    aws.String("amount"),
-			"#debtorId":  aws.String("debtorId"),
-			"#messageId": aws.String("messageId"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":roomId": {
-				S: aws.String(ID),
-			},
-		},
-		ProjectionExpression: aws.String("#roomId, #timestamp, #comment, #date, #amount, #debtorId, #messageId"),
-	}
-	dbResQuery, err := db.Query(getParamQuery)
-	if err != nil {
-		return err
-	}
-	for _, v := range dbResQuery.Items {
-		p := QueryHistory{}
-		err = dynamodbattribute.UnmarshalMap(v, &p)
-		historyItem.Item = append(historyItem.Item, p)
-	}
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-// get registered all query
-func getAllRegisteredQuery(db *dynamodb.DynamoDB, ID string, registeredItem *RegisteredQueries) error {
-	getParamQuery := &dynamodb.QueryInput{
-		TableName:              aws.String("lineServiceSeisanRegisteredQuery"),
-		KeyConditionExpression: aws.String("#roomId = :roomId"),
-		ExpressionAttributeNames: map[string]*string{
-			"#roomId":   aws.String("roomId"),
-			"#name":     aws.String("name"),
-			"#debtorId": aws.String("debtorId"),
-			"#amount":   aws.String("amount"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":roomId": {
-				S: aws.String(ID),
-			},
-		},
-		ProjectionExpression: aws.String("#roomId, #name, #debtorId, #amount"),
-	}
-	dbResQuery, err := db.Query(getParamQuery)
-	if err != nil {
-		return err
-	}
-	for _, v := range dbResQuery.Items {
-		p := RegisteredQuery{}
-		err = dynamodbattribute.UnmarshalMap(v, &p)
-		registeredItem.Item = append(registeredItem.Item, p)
-	}
-	if err != nil {
-		return err
-	}
-	return err
-}
-
-//	func updateDone(db *dynamodb.DynamoDB, roomId string, b bool) {
-//		input := &dynamodb.UpdateItemInput{
-//			TableName: aws.String("lineServiceSeisanRoomSetting"),
-//			Key: map[string]*dynamodb.AttributeValue{
-//				"roomId": {
-//					S: aws.String(roomId),
-//				},
-//			},
-//			ExpressionAttributeNames: map[string]*string{
-//				"#target": aws.String("seisanDone"),
-//			},
-//			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-//				":newState": {
-//					BOOL: aws.Bool(b),
-//				},
-//			},
-//			UpdateExpression: aws.String("set #target = :newState"),
-//		}
-//		_, err := db.UpdateItem(input)
-//		if err != nil {
-//			log.Fatal(err)
-//		}
-//	}
 func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var hevents Hooked_events_arr
+	var hevents Hook_events
 	err := json.Unmarshal([]byte(req.Body), &hevents)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Print(hevents)
 	sess, err := session.NewSession()
 	db := dynamodb.New(sess)
 	if err != nil {
@@ -309,31 +131,17 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			log.Fatal("invalid e.Source.Type")
 		}
 		if e.Type == "unsend" && e.Mode == "active" {
-			updateDone(db, ID, false)
+			task.UpdateDone(db, ID, false)
 			//get query history
-			historyItem := QueryHistories{}
-			err = getQueryHistory(db, ID, &historyItem)
+			historyItem := task.QueryHistories{}
+			err = task.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
 			log.Print(historyItem)
 			for _, item := range historyItem.Item {
 				if item.MessageId == e.Unsend.MessageId {
-					input := &dynamodb.DeleteItemInput{
-						TableName: aws.String("lineServiceSeisanQueryHistory"),
-						Key: map[string]*dynamodb.AttributeValue{
-							"roomId": {
-								S: aws.String(ID),
-							},
-							"timestamp": {
-								N: aws.String(strconv.FormatInt(item.Timestamp, 10)),
-							},
-						},
-						ReturnConsumedCapacity:      aws.String("NONE"),
-						ReturnItemCollectionMetrics: aws.String("NONE"),
-						ReturnValues:                aws.String("NONE"),
-					}
-					_, err = db.DeleteItem(input)
+					err = task.DeleteQueryHistory(db, ID, strconv.FormatInt(item.Timestamp, 10))
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -344,7 +152,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 		//init request struct
 		reqStruct := new(Resp)
 		reqStruct.ReplyToken = e.ReplyToken
-		//init roomSetting table when invited to room
+		//init task.RoomSetting table when invited to room
 		if e.Type == "join" && e.Mode == "active" {
 			uuidObj1, err := uuid.NewUUID()
 			if err != nil {
@@ -354,7 +162,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			inputAV, err := dynamodbattribute.MarshalMap(RoomSetting{
+			err = task.PutRoomSetting(db, ID, &task.RoomSetting{
 				RoomId:     ID,
 				UserName1:  "Tom",
 				UserName2:  "Bob",
@@ -363,14 +171,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				SeisanDone: false,
 				QueryCnt:   0,
 			})
-			if err != nil {
-				log.Fatal(err)
-			}
-			input := &dynamodb.PutItemInput{
-				TableName: aws.String("lineServiceSeisanRoomSetting"),
-				Item:      inputAV,
-			}
-			_, err = db.PutItem(input)
+
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -400,8 +201,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 		//t = parse(e.Message.Text)
 		if len(qs) == 4 && qs[0] == "クエリ登録" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -458,20 +259,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			inputAV, err := dynamodbattribute.MarshalMap(RegisteredQuery{
+			task.PutTemplateQuery(db, ID, &task.TemplateQuery{
 				RoomId:   ID,
 				Name:     qs[1],
 				DebtorId: debtorId,
 				Amount:   amount,
 			})
-			if err != nil {
-				log.Fatal(err)
-			}
-			inputPut := &dynamodb.PutItemInput{
-				TableName: aws.String("lineServiceSeisanRegisteredQuery"),
-				Item:      inputAV,
-			}
-			_, err = db.PutItem(inputPut)
+
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -483,8 +277,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 		} else if len(qs) == 2 && qs[0] == "クエリ" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -499,15 +293,15 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				}
 				continue
 			}
-			registeredItem := RegisteredQuery{}
-			err = getRegisteredQuery(db, ID, qs[1], &registeredItem)
+			registeredItem := task.TemplateQuery{}
+			err = task.GetTemplateQuery(db, ID, qs[1], &registeredItem)
 			if err != nil {
 				log.Fatal(err)
 			}
 			if registeredItem.DebtorId == "" {
 				reply := fmt.Sprintln("クエリが正しくありません")
-				registeredItems := RegisteredQueries{}
-				err = getAllRegisteredQuery(db, ID, &registeredItems)
+				registeredItems := task.TemplateQueries{}
+				err = task.GetAllTemplateQuery(db, ID, &registeredItems)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -542,7 +336,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				d = "  " + d
 			}
 			date := fmt.Sprintf("%s/%s", m, d)
-			inputAV, err := dynamodbattribute.MarshalMap(QueryHistory{
+			err = task.PutQueryHistory(db, ID, &task.QueryHistory{
 				RoomId:    ID,
 				Timestamp: e.Timestamp,
 				DebtorId:  registeredItem.DebtorId,
@@ -554,17 +348,9 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			input := &dynamodb.PutItemInput{
-				TableName: aws.String("lineServiceSeisanQueryHistory"),
-				Item:      inputAV,
-			}
-			_, err = db.PutItem(input)
-			if err != nil {
-				log.Fatal(err)
-			}
 			//culculate debt for notify users current state
-			historyItem := QueryHistories{}
-			err = getQueryHistory(db, ID, &historyItem)
+			historyItem := task.QueryHistories{}
+			err = task.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -598,13 +384,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 		} else if e.Message.Text == "クエリ確認" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
-			registeredItem := RegisteredQueries{}
-			err = getAllRegisteredQuery(db, ID, &registeredItem)
+			registeredItem := task.TemplateQueries{}
+			err = task.GetAllTemplateQuery(db, ID, &registeredItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -626,38 +412,10 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-		} else if e.Message.Text == "init" {
-			uuidObj1, err := uuid.NewUUID()
-			if err != nil {
-				log.Fatal(err)
-			}
-			uuidObj2, err := uuid.NewUUID()
-			if err != nil {
-				log.Fatal(err)
-			}
-			inputAV, err := dynamodbattribute.MarshalMap(RoomSetting{
-				RoomId:    ID,
-				UserName1: "Tom",
-				UserName2: "Bob",
-				UserId1:   uuidObj1.String(),
-				UserId2:   uuidObj2.String(),
-				QueryCnt:  0,
-			})
-			if err != nil {
-				log.Fatal(err)
-			}
-			input := &dynamodb.PutItemInput{
-				TableName: aws.String("lineServiceSeisanRoomSetting"),
-				Item:      inputAV,
-			}
-			_, err = db.PutItem(input)
-			if err != nil {
-				log.Fatal(err)
-			}
 		} else if len(qs) == 3 && qs[0] == "名前変更" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -720,10 +478,10 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 		} else if len(qs) == 4 && qs[0] == "登録" {
-			updateDone(db, ID, false)
+			task.UpdateDone(db, ID, false)
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -756,7 +514,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				d = "  " + d
 			}
 			date := fmt.Sprintf("%s/%s", m, d)
-			inputAV, err := dynamodbattribute.MarshalMap(QueryHistory{
+			err = task.PutQueryHistory(db, ID, &task.QueryHistory{
 				RoomId:    ID,
 				Timestamp: e.Timestamp,
 				DebtorId:  debtorId,
@@ -768,18 +526,10 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			input := &dynamodb.PutItemInput{
-				TableName: aws.String("lineServiceSeisanQueryHistory"),
-				Item:      inputAV,
-			}
-			_, err = db.PutItem(input)
-			if err != nil {
-				log.Fatal(err)
-			}
 			// reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 			//culculate debt for notify users current state
-			historyItem := QueryHistories{}
-			err = getQueryHistory(db, ID, &historyItem)
+			historyItem := task.QueryHistories{}
+			err = task.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -809,19 +559,17 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			reqStruct.Messages = []Message{{Type: "text", Text: replyMessageStr}}
 		} else if e.Message.Text == "精算" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Print(settingItem)
 			//get query history
-			historyItem := QueryHistories{}
-			err = getQueryHistory(db, ID, &historyItem)
+			historyItem := task.QueryHistories{}
+			err = task.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Print(historyItem)
 
 			reqStruct.Messages = []Message{}
 			user1Debt := int64(0)
@@ -873,13 +621,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
 				)
-				updateDone(db, ID, true)
+				task.UpdateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
 				)
-				updateDone(db, ID, true)
+				task.UpdateDone(db, ID, true)
 			} else {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
@@ -888,8 +636,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 		} else if e.Message.Text == "支払い完了" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -902,8 +650,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				}
 				continue
 			}
-			historyItem := QueryHistories{}
-			err = getQueryHistory(db, ID, &historyItem)
+			historyItem := task.QueryHistories{}
+			err = task.GetQueryHistory(db, ID, &historyItem)
 			//get query history
 			if err != nil {
 				log.Fatal(err)
@@ -934,11 +682,11 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			reqStruct.Messages = []Message{{Type: "sticker", PackageId: "8515", StickerId: "16581254"}, {Type: "text", Text: "えらいね"}}
-			updateDone(db, ID, false)
+			task.UpdateDone(db, ID, false)
 		} else if e.Message.Text == "名前確認" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -963,8 +711,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				},
 			}
 		} else if len(qs) == 2 && qs[0] == "支払日登録" {
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -1005,8 +753,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 		} else if e.Message.Text == "支払日確認" {
 			//get room setting
-			settingItem := RoomSetting{}
-			err := getRoomSetting(db, ID, &settingItem)
+			settingItem := task.RoomSetting{}
+			err := task.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -1017,19 +765,6 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				replytext = fmt.Sprintf("支払日は%d日です", settingItem.PaymentDue)
 			}
 			reqStruct.Messages = []Message{{Type: "text", Text: replytext}}
-		} else {
-			//ignore if message is unexpected format
-			// helpText := "クエリを正しく処理できませんでした\n"
-			// helpText += fmt.Sprint(qs) + "\n"
-			// helpText += "使用できるクエリは次の6つです\n"
-			// helpText += "\"init\"\n"
-			// helpText += "\"名前確認\"\n"
-			// helpText += "\"名前変更\" (変更前の名前) (変更後の名前)\n"
-			// helpText += "\"登録\" (借りる人の名前) (金額) (コメント)\n"
-			// helpText += "\"精算\"\n"
-			// helpText += "\"支払い完了\"\n"
-			// helpText += "また、登録クエリを送信取り消しした場合はそのクエリが消去されます"
-			// reqStruct.Messages = []Message{{Type: "text", Text: helpText}, {Type: "sticker", PackageId: "8515", StickerId: "16581259"}}
 		}
 
 		//reply registered messages
