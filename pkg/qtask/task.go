@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/qq8244353/lineServiceSeisan/dbtask"
 )
 
 func GetSetting() {

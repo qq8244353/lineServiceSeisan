@@ -20,7 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/google/uuid"
 	dbtask "github.com/qq8244353/lineServiceSeisan/pkg/dbtask"
-	task "github.com/qq8244353/lineServiceSeisan/pkg/task"
+	qtask "github.com/qq8244353/lineServiceSeisan/pkg/qtask"
 )
 
 type Hook_events struct {
