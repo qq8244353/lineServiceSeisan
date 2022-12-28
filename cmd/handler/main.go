@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/google/uuid"
+	"github.com/qq8244353/lineServiceSeisan/pkg"
 )
 
 type Hooked_events_arr struct {
@@ -143,28 +144,27 @@ func replyMessage(reqStruct *Resp) error {
 	return nil
 }
 
-func getRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) error {
-	//get roomSetting
-	getParam := &dynamodb.GetItemInput{
-		TableName: aws.String("lineServiceSeisanRoomSetting"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"roomId": {
-				S: aws.String(ID),
-			},
-		},
-	}
-	log.Print(ID)
-	dbRes, err := db.GetItem(getParam)
-	if err != nil {
-		return err
-	}
-	err = dynamodbattribute.UnmarshalMap(dbRes.Item, &settingItem)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
+//	func getRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) error {
+//		//get roomSetting
+//		getParam := &dynamodb.GetItemInput{
+//			TableName: aws.String("lineServiceSeisanRoomSetting"),
+//			Key: map[string]*dynamodb.AttributeValue{
+//				"roomId": {
+//					S: aws.String(ID),
+//				},
+//			},
+//		}
+//		log.Print(ID)
+//		dbRes, err := db.GetItem(getParam)
+//		if err != nil {
+//			return err
+//		}
+//		err = dynamodbattribute.UnmarshalMap(dbRes.Item, &settingItem)
+//		if err != nil {
+//			return err
+//		}
+//		return nil
+//	}
 func getRegisteredQuery(db *dynamodb.DynamoDB, ID string, name string, registeredItem *RegisteredQuery) error {
 	//get registeredQuery
 	getParam := &dynamodb.GetItemInput{
@@ -258,30 +258,30 @@ func getAllRegisteredQuery(db *dynamodb.DynamoDB, ID string, registeredItem *Reg
 	}
 	return err
 }
-func updateDone(db *dynamodb.DynamoDB, roomId string, b bool) {
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String("lineServiceSeisanRoomSetting"),
-		Key: map[string]*dynamodb.AttributeValue{
-			"roomId": {
-				S: aws.String(roomId),
-			},
-		},
-		ExpressionAttributeNames: map[string]*string{
-			"#target": aws.String("seisanDone"),
-		},
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":newState": {
-				BOOL: aws.Bool(b),
-			},
-		},
-		UpdateExpression: aws.String("set #target = :newState"),
-	}
-	_, err := db.UpdateItem(input)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
 
+//	func task.updateDone(db *dynamodb.DynamoDB, roomId string, b bool) {
+//		input := &dynamodb.UpdateItemInput{
+//			TableName: aws.String("lineServiceSeisanRoomSetting"),
+//			Key: map[string]*dynamodb.AttributeValue{
+//				"roomId": {
+//					S: aws.String(roomId),
+//				},
+//			},
+//			ExpressionAttributeNames: map[string]*string{
+//				"#target": aws.String("seisanDone"),
+//			},
+//			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+//				":newState": {
+//					BOOL: aws.Bool(b),
+//				},
+//			},
+//			UpdateExpression: aws.String("set #target = :newState"),
+//		}
+//		_, err := db.UpdateItem(input)
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//	}
 func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	var hevents Hooked_events_arr
 	err := json.Unmarshal([]byte(req.Body), &hevents)
@@ -307,7 +307,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			log.Fatal("invalid e.Source.Type")
 		}
 		if e.Type == "unsend" && e.Mode == "active" {
-			updateDone(db, ID, false)
+			task.updateDone(db, ID, false)
 			//get query history
 			historyItem := QueryHistories{}
 			err = getQueryHistory(db, ID, &historyItem)
@@ -718,7 +718,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 		} else if len(qs) == 4 && qs[0] == "登録" {
-			updateDone(db, ID, false)
+			task.updateDone(db, ID, false)
 			//get room setting
 			settingItem := RoomSetting{}
 			err := getRoomSetting(db, ID, &settingItem)
@@ -871,13 +871,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
 				)
-				updateDone(db, ID, true)
+				task.updateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
 				)
-				updateDone(db, ID, true)
+				task.updateDone(db, ID, true)
 			} else {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
@@ -932,7 +932,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			reqStruct.Messages = []Message{{Type: "sticker", PackageId: "8515", StickerId: "16581254"}, {Type: "text", Text: "えらいね"}}
-			updateDone(db, ID, false)
+			task.updateDone(db, ID, false)
 		} else if e.Message.Text == "名前確認" {
 			//get room setting
 			settingItem := RoomSetting{}
