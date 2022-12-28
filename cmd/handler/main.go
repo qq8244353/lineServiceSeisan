@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/google/uuid"
+	dbtask "github.com/qq8244353/lineServiceSeisan/pkg/dbtask"
 	task "github.com/qq8244353/lineServiceSeisan/pkg/task"
 )
 
@@ -131,17 +132,17 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			log.Fatal("invalid e.Source.Type")
 		}
 		if e.Type == "unsend" && e.Mode == "active" {
-			task.UpdateDone(db, ID, false)
+			dbtask.UpdateDone(db, ID, false)
 			//get query history
-			historyItem := task.QueryHistories{}
-			err = task.GetQueryHistory(db, ID, &historyItem)
+			historyItem := dbtask.QueryHistories{}
+			err = dbtask.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
 			log.Print(historyItem)
 			for _, item := range historyItem.Item {
 				if item.MessageId == e.Unsend.MessageId {
-					err = task.DeleteQueryHistory(db, ID, strconv.FormatInt(item.Timestamp, 10))
+					err = dbtask.DeleteQueryHistory(db, ID, strconv.FormatInt(item.Timestamp, 10))
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -152,7 +153,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 		//init request struct
 		reqStruct := new(Resp)
 		reqStruct.ReplyToken = e.ReplyToken
-		//init task.RoomSetting table when invited to room
+		//init dbtask.RoomSetting table when invited to room
 		if e.Type == "join" && e.Mode == "active" {
 			uuidObj1, err := uuid.NewUUID()
 			if err != nil {
@@ -162,7 +163,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
-			err = task.PutRoomSetting(db, ID, &task.RoomSetting{
+			err = dbtask.PutRoomSetting(db, ID, &dbtask.RoomSetting{
 				RoomId:     ID,
 				UserName1:  "Tom",
 				UserName2:  "Bob",
@@ -200,85 +201,11 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 		qs := strings.Fields(e.Message.Text)
 		//t = parse(e.Message.Text)
 		if len(qs) == 4 && qs[0] == "クエリ登録" {
-			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
-			if err != nil {
-				log.Fatal(err)
-			}
-			//validate user id
-			var debtorId string
-			if settingItem.UserName1 == qs[2] {
-				debtorId = settingItem.UserId1
-			} else if settingItem.UserName2 == qs[2] {
-				debtorId = settingItem.UserId2
-			} else {
-				errMessage := fmt.Sprintf("ユーザー名が正しくありません\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
-				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
-				//reply registered messages
-				err := replyMessage(reqStruct)
-				if err != nil {
-					log.Fatal(err)
-				}
-				continue
-			}
-			//validate query cnt
-			if settingItem.QueryCnt > 5 {
-				errMessage := "クエリ登録の上限です\n"
-				reqStruct.Messages = []Message{{Type: "text", Text: errMessage}}
-				//reply registered messages
-				err = replyMessage(reqStruct)
-				if err != nil {
-					log.Fatal(err)
-				}
-				continue
-			}
-			inputUpdate := &dynamodb.UpdateItemInput{
-				TableName: aws.String("lineServiceSeisanRoomSetting"),
-				Key: map[string]*dynamodb.AttributeValue{
-					"roomId": {
-						S: aws.String(ID),
-					},
-				},
-				ExpressionAttributeNames: map[string]*string{
-					"#target": aws.String("QueryCnt"),
-				},
-				ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-					":newState": {
-						N: aws.String(strconv.FormatInt(settingItem.QueryCnt+1, 10)),
-					},
-				},
-				UpdateExpression: aws.String("set #target = :newState"),
-			}
-			_, err = db.UpdateItem(inputUpdate)
-			if err != nil {
-				log.Fatal(err)
-			}
-			//register query
-			amount, err := strconv.ParseInt(qs[3], 10, 64)
-			if err != nil {
-				log.Fatal(err)
-			}
-			task.PutTemplateQuery(db, ID, &task.TemplateQuery{
-				RoomId:   ID,
-				Name:     qs[1],
-				DebtorId: debtorId,
-				Amount:   amount,
-			})
-
-			if err != nil {
-				log.Fatal(err)
-			}
-			//reply registered messages
-			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
-			err = replyMessage(reqStruct)
-			if err != nil {
-				log.Fatal(err)
-			}
+			task.RegisterQuery()
 		} else if len(qs) == 2 && qs[0] == "クエリ" {
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -293,15 +220,15 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				}
 				continue
 			}
-			registeredItem := task.TemplateQuery{}
-			err = task.GetTemplateQuery(db, ID, qs[1], &registeredItem)
+			registeredItem := dbtask.TemplateQuery{}
+			err = dbtask.GetTemplateQuery(db, ID, qs[1], &registeredItem)
 			if err != nil {
 				log.Fatal(err)
 			}
 			if registeredItem.DebtorId == "" {
 				reply := fmt.Sprintln("クエリが正しくありません")
-				registeredItems := task.TemplateQueries{}
-				err = task.GetAllTemplateQuery(db, ID, &registeredItems)
+				registeredItems := dbtask.TemplateQueries{}
+				err = dbtask.GetAllTemplateQuery(db, ID, &registeredItems)
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -336,7 +263,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				d = "  " + d
 			}
 			date := fmt.Sprintf("%s/%s", m, d)
-			err = task.PutQueryHistory(db, ID, &task.QueryHistory{
+			err = dbtask.PutQueryHistory(db, ID, &dbtask.QueryHistory{
 				RoomId:    ID,
 				Timestamp: e.Timestamp,
 				DebtorId:  registeredItem.DebtorId,
@@ -349,8 +276,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			//culculate debt for notify users current state
-			historyItem := task.QueryHistories{}
-			err = task.GetQueryHistory(db, ID, &historyItem)
+			historyItem := dbtask.QueryHistories{}
+			err = dbtask.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -384,13 +311,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 		} else if e.Message.Text == "クエリ確認" {
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
-			registeredItem := task.TemplateQueries{}
-			err = task.GetAllTemplateQuery(db, ID, &registeredItem)
+			registeredItem := dbtask.TemplateQueries{}
+			err = dbtask.GetAllTemplateQuery(db, ID, &registeredItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -414,8 +341,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 		} else if len(qs) == 3 && qs[0] == "名前変更" {
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -478,10 +405,10 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 		} else if len(qs) == 4 && qs[0] == "登録" {
-			task.UpdateDone(db, ID, false)
+			dbtask.UpdateDone(db, ID, false)
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -514,7 +441,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				d = "  " + d
 			}
 			date := fmt.Sprintf("%s/%s", m, d)
-			err = task.PutQueryHistory(db, ID, &task.QueryHistory{
+			err = dbtask.PutQueryHistory(db, ID, &dbtask.QueryHistory{
 				RoomId:    ID,
 				Timestamp: e.Timestamp,
 				DebtorId:  debtorId,
@@ -528,8 +455,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			// reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 			//culculate debt for notify users current state
-			historyItem := task.QueryHistories{}
-			err = task.GetQueryHistory(db, ID, &historyItem)
+			historyItem := dbtask.QueryHistories{}
+			err = dbtask.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -559,14 +486,14 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			reqStruct.Messages = []Message{{Type: "text", Text: replyMessageStr}}
 		} else if e.Message.Text == "精算" {
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
 			//get query history
-			historyItem := task.QueryHistories{}
-			err = task.GetQueryHistory(db, ID, &historyItem)
+			historyItem := dbtask.QueryHistories{}
+			err = dbtask.GetQueryHistory(db, ID, &historyItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -621,13 +548,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
 				)
-				task.UpdateDone(db, ID, true)
+				dbtask.UpdateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
 					Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
 				)
-				task.UpdateDone(db, ID, true)
+				dbtask.UpdateDone(db, ID, true)
 			} else {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
@@ -636,8 +563,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 		} else if e.Message.Text == "支払い完了" {
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -650,8 +577,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				}
 				continue
 			}
-			historyItem := task.QueryHistories{}
-			err = task.GetQueryHistory(db, ID, &historyItem)
+			historyItem := dbtask.QueryHistories{}
+			err = dbtask.GetQueryHistory(db, ID, &historyItem)
 			//get query history
 			if err != nil {
 				log.Fatal(err)
@@ -682,11 +609,11 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				log.Fatal(err)
 			}
 			reqStruct.Messages = []Message{{Type: "sticker", PackageId: "8515", StickerId: "16581254"}, {Type: "text", Text: "えらいね"}}
-			task.UpdateDone(db, ID, false)
+			dbtask.UpdateDone(db, ID, false)
 		} else if e.Message.Text == "名前確認" {
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -711,8 +638,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 				},
 			}
 		} else if len(qs) == 2 && qs[0] == "支払日登録" {
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -753,8 +680,8 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			reqStruct.Messages = []Message{{Type: "text", Text: "success"}}
 		} else if e.Message.Text == "支払日確認" {
 			//get room setting
-			settingItem := task.RoomSetting{}
-			err := task.GetRoomSetting(db, ID, &settingItem)
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
 			if err != nil {
 				log.Fatal(err)
 			}
