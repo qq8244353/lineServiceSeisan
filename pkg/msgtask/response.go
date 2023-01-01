@@ -12,6 +12,7 @@ import (
 type Response struct {
 	ReplyToken string    `json:"replyToken"`
 	Messages   []Message `json:"messages"`
+	To         string    `json:"to"`
 }
 
 type Message struct {
