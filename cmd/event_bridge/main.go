@@ -28,11 +28,11 @@ func handler() {
 	month_end := int64(time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1).Day())
 	log.Printf("%d, %d", today, month_end)
 	for _, item := range settingItem {
-		reqStruct := new(msgtask.Response)
+		reqStruct := new(msgtask.Push)
 		if today == item.PaymentDue || (today == month_end && today < item.PaymentDue) {
 			reqStruct.To = item.RoomId
 			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "本日は支払日です"}}
-			msgtask.ReplyMessage(reqStruct)
+			msgtask.PushMessage(reqStruct)
 		}
 	}
 }

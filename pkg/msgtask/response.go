@@ -15,6 +15,11 @@ type Response struct {
 	To         string    `json:"to"`
 }
 
+type Push struct {
+	Messages []Message `json:"messages"`
+	To       string    `json:"to"`
+}
+
 type Message struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
@@ -34,6 +39,33 @@ type TemplateAction struct {
 	Type  string `json:"type"`
 	Label string `json:"label"`
 	Text  string `json:"text"`
+}
+
+func PushMessage(reqStruct *Push) error {
+	reqJson, err := json.Marshal(&reqStruct)
+	if err != nil {
+		return err
+	}
+	log.Print(string(reqJson))
+	req, err := http.NewRequest(
+		"POST",
+		"https://api.line.me/v2/bot/message/push",
+		bytes.NewBuffer(reqJson),
+	)
+	if err != nil {
+		return err
+	}
+	accessToken := "Bearer " + os.Getenv("LINE_CHANNEL_ACCESS_TOKEN")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", accessToken)
+	client := new(http.Client)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	dumpResp, _ := httputil.DumpResponse(resp, true)
+	log.Printf("%s", dumpResp)
+	return nil
 }
 
 // reply registered messages
