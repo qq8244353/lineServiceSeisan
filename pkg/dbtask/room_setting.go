@@ -8,6 +8,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
+type PaymentSetting struct {
+	RoomId     string `dynamodbav:"roomId"`
+	PaymentDue int64  `dynamodbav:"paymentDue"`
+}
 type RoomSetting struct {
 	RoomId     string `dynamodbav:"roomId"`
 	UserName1  string `dynamodbav:"userName1"`
@@ -17,6 +21,38 @@ type RoomSetting struct {
 	SeisanDone bool   `dynamodbav:"seisanDone"`
 	QueryCnt   int64  `dynamodbav:"queryCnt"`
 	PaymentDue int64  `dynamodbav:"paymentDue"`
+}
+
+func GetAllRoomSettingOfPayment(db *dynamodb.DynamoDB, settingItem *[]PaymentSetting) error {
+	// define columns to get
+	getParam := &dynamodb.ScanInput{
+		TableName: aws.String("lineServiceSeisanRoomSetting"),
+		ExpressionAttributeNames: map[string]*string{
+			"#RID":  aws.String("roomId"),
+			"#PDAY": aws.String("paymentDue"),
+		},
+		ProjectionExpression: aws.String("#RID, #PDAY"),
+	}
+	// scan all recoreds each for loop has 1MB limit
+	for {
+		dbRes, err := db.Scan(getParam)
+		if err != nil {
+			return err
+		}
+		for _, item := range dbRes.Items {
+			var pSetting PaymentSetting
+			err = dynamodbattribute.UnmarshalMap(item, &pSetting)
+			if err != nil {
+				return err
+			}
+			*settingItem = append(*settingItem, pSetting)
+		}
+		if dbRes.LastEvaluatedKey == nil {
+			break
+		}
+		getParam.ExclusiveStartKey = dbRes.LastEvaluatedKey
+	}
+	return nil
 }
 
 func GetRoomSetting(db *dynamodb.DynamoDB, ID string, settingItem *RoomSetting) error {
