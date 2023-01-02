@@ -23,10 +23,17 @@ func handler() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	t := time.Now()
+
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	t := time.Now().UTC().In(tokyo)
 	today := int64(t.Day())
+
+	// today := int64(t.Day())
 	month_end := int64(time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1).Day())
-	log.Printf("%d, %d", today, month_end)
+	log.Printf("%d, %d %d", today, month_end, time.Now().Day())
 	for _, item := range settingItem {
 		reqStruct := new(msgtask.Push)
 		if today == item.PaymentDue || (today == month_end && today < item.PaymentDue) {
