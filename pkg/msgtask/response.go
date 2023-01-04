@@ -10,9 +10,10 @@ import (
 )
 
 type Response struct {
-	ReplyToken string    `json:"replyToken"`
-	Messages   []Message `json:"messages"`
-	To         string    `json:"to"`
+	ReplyToken           string    `json:"replyToken"`
+	Messages             []Message `json:"messages"`
+	To                   string    `json:"to"`
+	NotificationDisabled bool      `json:"notificationDisabled"`
 }
 
 type Push struct {
@@ -70,6 +71,7 @@ func PushMessage(reqStruct *Push) error {
 
 // reply registered messages
 func ReplyMessage(reqStruct *Response) error {
+	reqStruct.NotificationDisabled = true
 	reqJson, err := json.Marshal(&reqStruct)
 	if err != nil {
 		return err
