@@ -39,7 +39,7 @@ func PutQueryHistory(db *dynamodb.DynamoDB, ID string, queryItem *QueryHistory) 
 // get query history
 func GetQueryHistory(db *dynamodb.DynamoDB, ID string, historyItem *QueryHistories) error {
 	getParamQuery := &dynamodb.QueryInput{
-		TableName:              aws.String("lineServiceSeisantask.QueryHistory"),
+		TableName:              aws.String("lineServiceSeisanQueryHistory"),
 		KeyConditionExpression: aws.String("#roomId = :roomId"),
 		ExpressionAttributeNames: map[string]*string{
 			"#roomId":    aws.String("roomId"),

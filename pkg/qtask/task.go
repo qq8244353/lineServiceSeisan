@@ -24,6 +24,8 @@ func UpdateUsername(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct *ms
 	}
 	log.Print(qs)
 	log.Printf("%d %d %d", len(qs[0]), len(qs[1]), len(qs[2]))
+	log.Printf("%v", settingItem)
+	log.Printf("%v", &settingItem)
 	if len(qs[2]) > 15 {
 		reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "ユーザー名は5文字以下にしてください"}}
 		//reply registered messages
@@ -176,6 +178,7 @@ func RegisterTemplate(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct *
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("reg %v", settingItem)
 	//validate user id
 	var debtorId string
 	if settingItem.UserName1 == qs[2] {
@@ -241,10 +244,34 @@ func RegisterTemplate(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct *
 	}
 	//reply registered messages
 	reqStruct.Messages = []msgtask.Message{{Type: "text", Text: "success"}}
-	err = msgtask.ReplyMessage(reqStruct)
+}
+func GetTemplates(db *dynamodb.DynamoDB, ID string, reqStruct *msgtask.Response) {
+	registeredItem := dbtask.TemplateQueries{}
+	err := dbtask.GetAllTemplateQuery(db, ID, &registeredItem)
+	log.Printf("%v", registeredItem)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%v", err)
 	}
+	settingItem := dbtask.RoomSetting{}
+	err = dbtask.GetRoomSetting(db, ID, &settingItem)
+	log.Printf("%v", settingItem)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	reply := fmt.Sprintf("登録されたクエリは次の%d件です\n", settingItem.QueryCnt)
+	for _, v := range registeredItem.Item {
+		var debtorName string
+		if v.DebtorId == settingItem.UserId1 {
+			debtorName = settingItem.UserName1
+		} else if v.DebtorId == settingItem.UserId2 {
+			debtorName = settingItem.UserName2
+		} else {
+			reply += "内部エラー"
+			break
+		}
+		reply += fmt.Sprintf("%s %s %d\n", v.Name, debtorName, v.Amount)
+	}
+	reqStruct.Messages = []msgtask.Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
 }
 func GetQueryHistory() {
 }
@@ -255,6 +282,7 @@ func ExecuteTempmlate(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct *
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("%v", settingItem)
 	//validate querycnt
 	if settingItem.QueryCnt == 0 {
 		errMessage := "登録されたクエリが0件です\n"
@@ -351,10 +379,6 @@ func ExecuteTempmlate(db *dynamodb.DynamoDB, ID string, qs []string, reqStruct *
 		ReplyMessageStr += fmt.Sprintf("登録完了\n素晴らしいことに借金はありません!")
 	}
 	reqStruct.Messages = []msgtask.Message{{Type: "text", Text: ReplyMessageStr}}
-	err = msgtask.ReplyMessage(reqStruct)
-	if err != nil {
-		log.Fatal(err)
-	}
 }
 func ExecuteClearance() {
 }

@@ -22,7 +22,7 @@ type TemplateQuery struct {
 func GetTemplateQuery(db *dynamodb.DynamoDB, ID string, name string, registeredItem *TemplateQuery) error {
 	//get TemplateQuery
 	getParam := &dynamodb.GetItemInput{
-		TableName: aws.String("lineServiceSeisanTemplateQuery"),
+		TableName: aws.String("lineServiceSeisanRegisteredQuery"),
 		Key: map[string]*dynamodb.AttributeValue{
 			"roomId": {
 				S: aws.String(ID),
@@ -47,7 +47,7 @@ func GetTemplateQuery(db *dynamodb.DynamoDB, ID string, name string, registeredI
 // get registered all query
 func GetAllTemplateQuery(db *dynamodb.DynamoDB, ID string, registeredItem *TemplateQueries) error {
 	getParamQuery := &dynamodb.QueryInput{
-		TableName:              aws.String("lineServiceSeisanTemplateQuery"),
+		TableName:              aws.String("lineServiceSeisanRegisteredQuery"),
 		KeyConditionExpression: aws.String("#roomId = :roomId"),
 		ExpressionAttributeNames: map[string]*string{
 			"#roomId":   aws.String("roomId"),
@@ -83,7 +83,7 @@ func PutTemplateQuery(db *dynamodb.DynamoDB, ID string, registeringItem *Templat
 		log.Fatal(err)
 	}
 	inputPut := &dynamodb.PutItemInput{
-		TableName: aws.String("lineServiceSeisantask.TemplateQuery"),
+		TableName: aws.String("lineServiceSeisanRegisteredQuery"),
 		Item:      inputAV,
 	}
 	_, err = db.PutItem(inputPut)

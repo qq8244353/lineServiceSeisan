@@ -112,43 +112,25 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 		qs := strings.Fields(e.Message.Text)
 		//t = parse(e.Message.Text)
 		if len(qs) == 4 && qs[0] == "クエリ登録" {
-			qtask.RegisterQueryHistory(db, ID, qs, reqStruct, e)
+			qtask.RegisterTemplate(db, ID, qs, reqStruct)
 		} else if len(qs) == 2 && qs[0] == "クエリ" {
 			qtask.ExecuteTempmlate(db, ID, qs, reqStruct, e)
-			// } else if e.Message.Text == "クエリ確認" {
-			// 	//get room setting
-			// 	settingItem := dbtask.RoomSetting{}
-			// 	err := dbtask.GetRoomSetting(db, ID, &settingItem)
-			// 	if err != nil {
-			// 		log.Fatal(err)
-			// 	}
-			// 	registeredItem := dbtask.TemplateQueries{}
-			// 	err = dbtask.GetAllTemplateQuery(db, ID, &registeredItem)
-			// 	if err != nil {
-			// 		log.Fatal(err)
-			// 	}
-			// 	reply := fmt.Sprintf("登録されたクエリは次の%d件です\n", settingItem.QueryCnt)
-			// 	for _, v := range registeredItem.Item {
-			// 		var debtorName string
-			// 		if v.DebtorId == settingItem.UserId1 {
-			// 			debtorName = settingItem.UserName1
-			// 		} else if v.DebtorId == settingItem.UserId2 {
-			// 			debtorName = settingItem.UserName2
-			// 		} else {
-			// 			reply += "内部エラー"
-			// 			break
-			// 		}
-			// 		reply += fmt.Sprintf("%s %s %d\n", v.Name, debtorName, v.Amount)
-			// 	}
-			// 	reqStruct.Messages = []msgtask.Message{{Type: "text", Text: strings.TrimRight(reply, "\n")}}
-			// 	err = msgtask.ReplyMessage(reqStruct)
-			// 	if err != nil {
-			// 		log.Fatal(err)
-			// 	}
+		} else if e.Message.Text == "クエリ確認" {
+			qtask.GetTemplates(db, ID, reqStruct)
 		} else if len(qs) == 3 && qs[0] == "名前変更" {
-			qtask.UpdateUsername(db, ID, reqStruct, e)
+			//ok
+			qtask.UpdateUsername(db, ID, qs, reqStruct)
+		} else if e.Message.Text == "名前確認" {
+			//get room setting
+			settingItem := dbtask.RoomSetting{}
+			err := dbtask.GetRoomSetting(db, ID, &settingItem)
+			if err != nil {
+				log.Fatal(err)
+			}
+			textUserName := fmt.Sprintf("ユーザー名\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
+			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: textUserName}}
 		} else if len(qs) == 4 && qs[0] == "登録" {
-			qtask.RegisterQueryHistory(db, ID, reqStruct, e)
+			qtask.RegisterQueryHistory(db, ID, qs, reqStruct, e)
 		} else if e.Message.Text == "精算" {
 			//get room setting
 			settingItem := dbtask.RoomSetting{}
@@ -162,6 +144,7 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if err != nil {
 				log.Fatal(err)
 			}
+			log.Printf("%v %v", settingItem, historyItem)
 
 			reqStruct.Messages = []msgtask.Message{}
 			user1Debt := int64(0)
@@ -211,13 +194,13 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			if user1Debt > 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					msgtask.Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), strconv.FormatInt(user1Debt, 10))},
+					msgtask.Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName1), user1Debt)},
 				)
 				dbtask.UpdateDone(db, ID, true)
 			} else if user1Debt < 0 {
 				reqStruct.Messages = append(
 					reqStruct.Messages,
-					msgtask.Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), strconv.FormatInt(user1Debt*-1, 10))},
+					msgtask.Message{Type: "text", Text: fmt.Sprintf("%sさんは%d円の支払いをしてください", strings.TrimSpace(settingItem.UserName2), user1Debt*-1)},
 				)
 				dbtask.UpdateDone(db, ID, true)
 			} else {
@@ -275,15 +258,6 @@ func handler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse,
 			}
 			reqStruct.Messages = []msgtask.Message{{Type: "sticker", PackageId: "8515", StickerId: "16581254"}, {Type: "text", Text: "えらいね"}}
 			dbtask.UpdateDone(db, ID, false)
-		} else if e.Message.Text == "名前確認" {
-			//get room setting
-			settingItem := dbtask.RoomSetting{}
-			err := dbtask.GetRoomSetting(db, ID, &settingItem)
-			if err != nil {
-				log.Fatal(err)
-			}
-			textUserName := fmt.Sprintf("ユーザー名\n%s\n%s", settingItem.UserName1, settingItem.UserName2)
-			reqStruct.Messages = []msgtask.Message{{Type: "text", Text: textUserName}}
 		} else if e.Message.Text == "デバッグ" {
 			reqStruct.Messages = []msgtask.Message{
 				{
